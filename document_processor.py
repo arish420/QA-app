@@ -18,7 +18,15 @@ load_dotenv()
 # Function to extract text from a scanned PDF (OCR)
 def extract_text_with_ocr(pdf_path):
     try:
-        images = convert_from_path(pdf_path)
+        try:
+            images = convert_from_path(pdf_path)
+        except Exception as e:
+            if "poppler" in str(e).lower():
+                st.error("Poppler not installed. Cannot process PDF with OCR.")
+                return ""
+            else:
+                raise e
+                
         full_text = ""
         for image in images:
             full_text += pytesseract.image_to_string(image) + "\n"

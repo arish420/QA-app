@@ -118,8 +118,17 @@ def extract_text_with_ocr(pdf_path):
         if not hasattr(pytesseract.pytesseract, 'tesseract_cmd') or not os.path.exists(pytesseract.pytesseract.tesseract_cmd):
             st.error("Tesseract OCR not available. Cannot process scanned document.")
             return ""
+        
+        try:
+            images = convert_from_path(pdf_path)
+        except Exception as e:
+            if "poppler" in str(e).lower():
+                st.error("Poppler not installed. Cannot process PDF with OCR.")
+                st.info("For local installation: On Windows use conda install -c conda-forge poppler, on Linux use apt-get install poppler-utils")
+                return ""
+            else:
+                raise e
             
-        images = convert_from_path(pdf_path)
         full_text = ""
         with st.progress(0) as progress_bar:
             for i, image in enumerate(images):
