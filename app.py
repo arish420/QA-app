@@ -31,6 +31,14 @@ except ImportError:
 if 'api_key' not in st.session_state:
     st.session_state.api_key = None
 
+# Store extracted questions in session state
+if 'questions' not in st.session_state:
+    st.session_state.questions = []
+
+# Store generated answers in session state
+if 'questions_answers' not in st.session_state:
+    st.session_state.questions_answers = []
+
 # Check if OpenAI is installed and install the correct version if needed
 def check_openai_version():
     try:
@@ -138,10 +146,17 @@ def extract_text_with_ocr(pdf_path):
                 raise e
             
         full_text = ""
-        with st.progress(0) as progress_bar:
-            for i, image in enumerate(images):
-                full_text += pytesseract.image_to_string(image) + "\n"
-                progress_bar.progress((i + 1) / len(images))
+        total_images = len(images)
+        progress_placeholder = st.empty()
+        
+        for i, image in enumerate(images):
+            full_text += pytesseract.image_to_string(image) + "\n"
+            # Update progress safely
+            percentage = int(100 * (i + 1) / total_images)
+            progress_placeholder.text(f"OCR Processing: {percentage}% ({i+1}/{total_images} pages)")
+        
+        # Clear the progress message when done
+        progress_placeholder.empty()
         return full_text
     except Exception as e:
         st.error(f"Error processing PDF with OCR: {str(e)}")
@@ -152,12 +167,22 @@ def extract_text_from_pdf(pdf_path):
     text = ""
     try:
         with pdfplumber.open(pdf_path) as pdf:
-            with st.progress(0) as progress_bar:
-                for i, page in enumerate(pdf.pages):
-                    extracted_text = page.extract_text()
-                    if extracted_text:
-                        text += extracted_text + "\n"
-                    progress_bar.progress((i + 1) / len(pdf.pages))
+            total_pages = len(pdf.pages)
+            progress_placeholder = st.empty()
+            
+            progress_placeholder.text(f"Processing PDF with {total_pages} pages...")
+            
+            for i, page in enumerate(pdf.pages):
+                extracted_text = page.extract_text()
+                if extracted_text:
+                    text += extracted_text + "\n"
+                
+                # Update progress - safely calculate percentage
+                percentage = int(100 * (i + 1) / total_pages)
+                progress_placeholder.text(f"Processing PDF: {percentage}% ({i+1}/{total_pages} pages)")
+            
+            # Clear the progress message when done
+            progress_placeholder.empty()
     except Exception as e:
         st.error(f"Error extracting text from PDF: {str(e)}")
     return text
@@ -287,8 +312,12 @@ def main():
         st.sidebar.error("❌ API Key not configured")
         openai.api_key = None
     
+    # Create columns for the file uploader and status display
+    col1, col2 = st.columns([2, 1])
+    
     # File uploader
-    uploaded_file = st.file_uploader("Upload a document", type=["pdf", "docx"])
+    with col1:
+        uploaded_file = st.file_uploader("Upload a document", type=["pdf", "docx"])
     
     if uploaded_file and validate_api_key(current_api_key):
         file_type = uploaded_file.name.split('.')[-1].lower()
@@ -303,49 +332,106 @@ def main():
             temp_file_path = tmp_file.name
         
         try:
+            # Display status in the second column
+            with col2:
+                st.info(f"📄 File: {uploaded_file.name}")
+            
             with st.spinner("Processing document..."):
                 # Extract questions from document
                 full_text = get_document_text(temp_file_path, file_type)
                 questions = extract_questions(full_text)
+                st.session_state.questions = questions
                 
                 if not questions:
-                    st.warning("No questions were extracted from the document.")
+                    st.error("❌ No questions were extracted from the document.")
                 else:
-                    st.subheader(f"Extracted Questions ({len(questions)})")
-                    for i, q in enumerate(questions, 1):
-                        st.write(f"**Q{i}:** {q}")
+                    # Create columns for count display and generate button
+                    col1, col2 = st.columns([3, 1])
                     
-                    # Generate answers button
-                    if st.button("Generate Expert Answers"):
+                    # Display only the number of questions extracted in the first column
+                    with col1:
+                        st.success(f"✅ Successfully extracted {len(questions)} questions from the document!")
+                    
+                    # Generate answers button in the second column - more prominent placement
+                    with col2:
+                        generate_button = st.button("Generate Expert Answers", type="primary", use_container_width=True)
+                    
+                    # Show a small sample of questions (just first 3) as a preview
+                    with st.expander("Preview of extracted questions"):
+                        for i, q in enumerate(questions[:3], 1):
+                            st.write(f"**Q{i}:** {q}")
+                        if len(questions) > 3:
+                            st.write(f"_...and {len(questions)-3} more questions_")
+                    
+                    # Generate answers when button is clicked
+                    if generate_button:
                         with st.spinner("Generating answers..."):
                             questions_answers = []
-                            progress_bar = st.progress(0)
+                            progress_placeholder = st.empty()
+                            status_text = st.empty()
                             
+                            total_questions = len(questions)
                             for i, question in enumerate(questions):
+                                status_text.text(f"Generating answer for question {i+1} of {total_questions}")
+                                percentage = int(100 * (i + 1) / total_questions)
+                                progress_placeholder.progress(percentage / 100)
+                                
                                 answer = get_gpt_answer(question, openai)
                                 questions_answers.append((question, answer))
-                                progress_bar.progress((i + 1) / len(questions))
+                            
+                            status_text.empty()
+                            progress_placeholder.empty()
+                            
+                            # Store in session state
+                            st.session_state.questions_answers = questions_answers
                             
                             # Save to DOCX
                             output_file = tempfile.NamedTemporaryFile(delete=False, suffix='.docx').name
                             save_to_docx(questions_answers, output_file)
                             
                             # Display download button
+                            st.success("✅ All answers generated successfully!")
                             with open(output_file, "rb") as file:
                                 btn = st.download_button(
                                     label="Download Q&A Document",
                                     data=file,
                                     file_name="Document_QA.docx",
-                                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                    use_container_width=True
                                 )
                             
-                            # Display answers
-                            st.subheader("Generated Answers")
+                            # Display questions and answers together
+                            st.subheader("Generated Questions & Answers")
+                            
+                            # Create expandable sections for each Q&A pair
                             for i, (q, a) in enumerate(questions_answers, 1):
-                                st.markdown(f"**Question {i}:** {q}")
-                                st.markdown(f"**Answer:** {a}")
-                                st.markdown("---")
-        
+                                with st.expander(f"Question {i}: {q[:80]}{'...' if len(q) > 80 else ''}"):
+                                    st.markdown(f"**Full Question:** {q}")
+                                    st.markdown(f"**Answer:** {a}")
+            
+            # If we have answers from a previous run, keep them displayed
+            if not generate_button and st.session_state.questions_answers:
+                st.subheader("Previously Generated Answers")
+                # Provide option to download previous results
+                if 'previous_output_file' not in st.session_state:
+                    output_file = tempfile.NamedTemporaryFile(delete=False, suffix='.docx').name
+                    save_to_docx(st.session_state.questions_answers, output_file)
+                    st.session_state.previous_output_file = output_file
+                
+                with open(st.session_state.previous_output_file, "rb") as file:
+                    st.download_button(
+                        label="Download Previous Q&A Document",
+                        data=file,
+                        file_name="Document_QA.docx",
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        use_container_width=True
+                    )
+                
+                for i, (q, a) in enumerate(st.session_state.questions_answers, 1):
+                    with st.expander(f"Question {i}: {q[:80]}{'...' if len(q) > 80 else ''}"):
+                        st.markdown(f"**Full Question:** {q}")
+                        st.markdown(f"**Answer:** {a}")
+                
         finally:
             # Clean up the temp file
             try:
