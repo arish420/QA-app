@@ -1,7 +1,7 @@
 import os
 
 # OpenAI API Key
-OPENAI_API_KEY = "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"  # Replace with your API key
+OPENAI_API_KEY = ""  # Replace with your API key
 
 
 # Application Settings 
