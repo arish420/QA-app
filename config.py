@@ -1,8 +1,12 @@
 import os
+import streamlit as st
 
-# OpenAI API Key
-OPENAI_API_KEY = ""  # Replace with your API key
-
+# OpenAI API Key - Try to get from environment or secrets
+try:
+    OPENAI_API_KEY = st.secrets.get("openai", {}).get("api_key", os.environ.get("OPENAI_API_KEY", ""))
+except:
+    # Fallback to environment variable only if secrets access fails
+    OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 
 # Application Settings 
 APP_TITLE = "Document Q&A Generator"

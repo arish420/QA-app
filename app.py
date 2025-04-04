@@ -38,15 +38,23 @@ def check_openai_version():
         current_version = openai.__version__
         st.sidebar.info(f"OpenAI version: {current_version}")
         if not current_version.startswith("0.28"):
-            st.sidebar.warning("OpenAI version mismatch. Installing compatible version...")
-            subprocess.check_call([sys.executable, "-m", "pip", "install", "--force-reinstall", "openai==0.28.0"])
+            try:
+                st.sidebar.warning("OpenAI version mismatch. Installing compatible version...")
+                subprocess.check_call([sys.executable, "-m", "pip", "install", "--force-reinstall", "openai==0.28.0"])
+                st.sidebar.success("OpenAI 0.28.0 installed. Please refresh the page.")
+                st.stop()
+            except Exception as e:
+                st.sidebar.error(f"Failed to install OpenAI 0.28.0: {str(e)}")
+                st.sidebar.warning("Will attempt to use current version, but functionality may be limited.")
+    except ImportError:
+        try:
+            st.sidebar.warning("OpenAI not found. Installing compatible version...")
+            subprocess.check_call([sys.executable, "-m", "pip", "install", "openai==0.28.0"])
             st.sidebar.success("OpenAI 0.28.0 installed. Please refresh the page.")
             st.stop()
-    except ImportError:
-        st.sidebar.warning("OpenAI not found. Installing compatible version...")
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "openai==0.28.0"])
-        st.sidebar.success("OpenAI 0.28.0 installed. Please refresh the page.")
-        st.stop()
+        except Exception as e:
+            st.sidebar.error(f"Failed to install OpenAI: {str(e)}")
+            st.stop()
     
     # Import after ensuring the correct version
     import openai
